@@ -1,4 +1,4 @@
-pragma solidity ^0.4.15;
+pragma solidity ^0.4.18;
 
 import 'zeppelin-solidity/contracts/token/StandardToken.sol';
 
@@ -15,7 +15,7 @@ contract OurToken is StandardToken {
     }
 
     //should be constant, but is not, to avoid compiler warning
-    address public  rakeEventPlaceholderAddress = 0x0000000000000000000000000000000000000000;
+    address public constant RAKE_EVENT_PLACEHOLDER_ADDR = 0x0000000000000000000000000000000000000000;
 
     string public constant name = "OurToken";
 
@@ -45,7 +45,7 @@ contract OurToken is StandardToken {
 
     uint256 public endBlock;
 
-    uint256 public ETH_FairMiningToken; //number of FairMiningTokens per ETH
+    uint256 public numberFRMPerETH; //number of FRM per ETH
 
     mapping (address => uint256) lastRakePoints;
 
@@ -68,7 +68,7 @@ contract OurToken is StandardToken {
         //to be overridden
         weiICOMaximum = 0;
         endBlock = 0;
-        ETH_FairMiningToken = 0;
+        numberFRMPerETH = 0;
         totalSupply = 2000000000 * pointMultiplier;
         //sets the value in the superclass.
         balances[initialHolder] = totalSupply;
@@ -112,7 +112,7 @@ contract OurToken is StandardToken {
     BEGIN ICO functions
     */
 
-    //this is the main funding function, it updates the balances of FairMiningTokens during the ICO.
+    //this is the main funding function, it updates the balances of FRM during the ICO.
     //no particular incentive schemes have been implemented here
     //it is only accessible during the "ICO" phase.
     function() payable 
@@ -121,9 +121,9 @@ contract OurToken is StandardToken {
         require(this.balance <= weiICOMaximum); //note that msg.value is already included in this.balance
         require(block.number < endBlock);
         require(block.number >= startAcceptingFundsBlock);
-        uint256 FairMiningTokenIncrease = msg.value * ETH_FairMiningToken;
-        balances[initialHolder] -= FairMiningTokenIncrease;
-        balances[msg.sender] += FairMiningTokenIncrease;
+        uint256 FRMTokenIncrease = msg.value * numberFRMPerETH;
+        balances[initialHolder] -= FRMTokenIncrease;
+        balances[msg.sender] += FRMTokenIncrease;
         Credited(msg.sender, balances[msg.sender], msg.value);
     }
 
@@ -150,8 +150,8 @@ contract OurToken is StandardToken {
         weiICOMaximum = _newWeiICOMaximum;
         silencePeriod = _silencePeriod;
         endBlock = _newEndBlock;
-        // initial conversion rate of ETH_FairMiningToken set now, this is used during the Ico phase.
-        ETH_FairMiningToken = ((totalSupply * percentForSale) / 100) / weiICOMaximum;
+        // initial conversion rate of numberFRMPerETH set now, this is used during the Ico phase.
+        numberFRMPerETH = ((totalSupply * percentForSale) / 100) / weiICOMaximum;
         // check pointMultiplier
         moveToState(States.ValuationSet);
     }
@@ -192,7 +192,7 @@ contract OurToken is StandardToken {
     function burnUnsoldCoins()
     internal
     {
-        uint256 soldcoins = this.balance * ETH_FairMiningToken;
+        uint256 soldcoins = this.balance * numberFRMPerETH;
         totalSupply = soldcoins * 100 / percentForSale;
         balances[initialHolder] = totalSupply - soldcoins;
         //slashing the initial supply, so that the ico is selling 30% total
@@ -237,7 +237,7 @@ contract OurToken is StandardToken {
     {
         require(balances[msg.sender] > 0);
         //there is no need for updateAccount(msg.sender) since the token never became active.
-        uint256 payout = balances[msg.sender] / ETH_FairMiningToken;
+        uint256 payout = balances[msg.sender] / numberFRMPerETH;
         //reverse calculate the amount to pay out
         balances[msg.sender] = 0;
         msg.sender.transfer(payout);
@@ -298,7 +298,7 @@ contract OurToken is StandardToken {
             return false;
         }
         if (_value != 0) {
-            Transfer(_sender, rakeEventPlaceholderAddress, _value);
+            Transfer(_sender, RAKE_EVENT_PLACEHOLDER_ADDR, _value);
             balances[_sender] -= _value;
             unclaimedRakes += _value;
             //   calc amount of points from total:
@@ -319,7 +319,7 @@ contract OurToken is StandardToken {
         if (owing != 0) {
             unclaimedRakes -= owing;
             balances[_account] += owing;
-            Transfer(rakeEventPlaceholderAddress, _account, owing);
+            Transfer(RAKE_EVENT_PLACEHOLDER_ADDR, _account, owing);
         }
         //also if 0 this needs to be called, since lastRakePoints need the right value
         lastRakePoints[_account] = totalRakePoints;
@@ -330,7 +330,8 @@ contract OurToken is StandardToken {
     function rakesOwing(address _account)
     internal
     constant
-    returns (uint256) {//returns always > 0 value
+    returns (uint256) {
+        //returns always > 0 value
         //how much is _account owed, denominated in points from total supply
         uint256 newRakePoints = totalRakePoints - lastRakePoints[_account];
         //always positive
@@ -358,14 +359,13 @@ contract OurToken is StandardToken {
         _;
     }
 
-    // all functions require FairMiningToken operational state
+    // all functions require FRMToken operational state
 
 
-    // registerContest declares a contest to FairMiningToken.
-    // It must be called from an address that has FairMiningToken.
+    // registerContest declares a contest to FRMToken.
+    // It must be called from an address that has FRMToken.
     // This address is recorded as the contract admin.
-    function registerContest()
-    {
+    function registerContest() {
         contests[msg.sender] = true;
         ContestAnnouncement(msg.sender);
     }
