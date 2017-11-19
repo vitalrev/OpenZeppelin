@@ -10,6 +10,11 @@ Install solidity compiler external, for Visual Studio Code:
 Install TestRPC:  
 `npm install -g ethereumjs-testrpc`
 
+## Code Editor
+Visual Studio Code with 2 plugins:  
+- solidity from Juan Blanco
+- solidity-solhint from Ilya Drabenia
+
 ## Run blockchain
 - Start TestRPC with: `testrpc`
 - [import account in MetaMask](http://truffleframework.com/tutorials/pet-shop#interacting-with-the-dapp-in-a-browser) 

@@ -2,6 +2,7 @@ pragma solidity ^0.4.18;
 
 import 'zeppelin-solidity/contracts/token/StandardToken.sol';
 
+
 contract OurToken is StandardToken {
 
     // data structures
@@ -17,7 +18,7 @@ contract OurToken is StandardToken {
     //should be constant, but is not, to avoid compiler warning
     address public constant RAKE_EVENT_PLACEHOLDER_ADDR = 0x0000000000000000000000000000000000000000;
 
-    string public constant name = "OurToken";
+    string public constant name = "OurToken";  //
 
     string public constant symbol = "FRM";
 
@@ -49,16 +50,15 @@ contract OurToken is StandardToken {
 
     mapping (address => uint256) lastRakePoints;
 
-
-    uint256 pointMultiplier = 1e18; //100% = 1*10^18 points
+    uint256 constant POINT_MULTIPLIER = 1e18; //100% = 1*10^18 points
     uint256 totalRakePoints; //total amount of rakes ever paid out as a points value. increases monotonically, but the number range is 2^256, that's enough.
     uint256 unclaimedRakes; //amount of coins unclaimed. acts like a special entry to balances
-    uint256 constant percentForSale = 30;
+    uint256 constant PERCENT_FOR_SALE = 30;
 
     mapping (address => bool) public contests; // true if this address holds a contest
 
     //this creates the contract and stores the owner. it also passes in 3 addresses to be used later during the lifetime of the contract.
-    function OurToken(address _stateControl, address _whitelistControl, address _withdraw, address _initialHolder) {
+    function OurToken(address _stateControl, address _whitelistControl, address _withdraw, address _initialHolder) public {
         initialHolder = _initialHolder;
         stateControl = _stateControl;
         whitelistControl = _whitelistControl;
@@ -69,7 +69,7 @@ contract OurToken is StandardToken {
         weiICOMaximum = 0;
         endBlock = 0;
         numberFRMPerETH = 0;
-        totalSupply = 2000000000 * pointMultiplier;
+        totalSupply = 2000000000 * POINT_MULTIPLIER;
         //sets the value in the superclass.
         balances[initialHolder] = totalSupply;
         //initially, initialHolder has 100%
@@ -111,35 +111,13 @@ contract OurToken is StandardToken {
     /**
     BEGIN ICO functions
     */
-
-    //this is the main funding function, it updates the balances of FRM during the ICO.
-    //no particular incentive schemes have been implemented here
-    //it is only accessible during the "ICO" phase.
-    function() payable 
-    requireState(States.Ico) {
-        require(whitelist[msg.sender] == true);
-        require(this.balance <= weiICOMaximum); //note that msg.value is already included in this.balance
-        require(block.number < endBlock);
-        require(block.number >= startAcceptingFundsBlock);
-        uint256 FRMTokenIncrease = msg.value * numberFRMPerETH;
-        balances[initialHolder] -= FRMTokenIncrease;
-        balances[msg.sender] += FRMTokenIncrease;
-        Credited(msg.sender, balances[msg.sender], msg.value);
-    }
-
-    function moveToState(States _newState)
-    internal
-    {
-        StateTransition(state, _newState);
-        state = _newState;
-    }
-
     // ICO contract configuration function
     // newEthICOMinimum is the minimum amount of funds to raise
     // newEthICOMaximum is the maximum amount of funds to raise
     // silencePeriod is a number of blocks to wait after starting the ICO. No funds are accepted during the silence period. It can be set to zero.
     // newEndBlock is the absolute block number at which the ICO must stop. It must be set after now + silence period.
     function updateEthICOThresholds(uint256 _newWeiICOMinimum, uint256 _newWeiICOMaximum, uint256 _silencePeriod, uint256 _newEndBlock)
+    public
     onlyStateControl
     {
         require(state == States.Initial || state == States.ValuationSet);
@@ -151,54 +129,66 @@ contract OurToken is StandardToken {
         silencePeriod = _silencePeriod;
         endBlock = _newEndBlock;
         // initial conversion rate of numberFRMPerETH set now, this is used during the Ico phase.
-        numberFRMPerETH = ((totalSupply * percentForSale) / 100) / weiICOMaximum;
-        // check pointMultiplier
+        numberFRMPerETH = ((totalSupply * PERCENT_FOR_SALE) / 100) / weiICOMaximum;
+        // check POINT_MULTIPLIER
         moveToState(States.ValuationSet);
     }
 
     function startICO()
+    public
     onlyStateControl
-    requireState(States.ValuationSet) {
+    requireState(States.ValuationSet) 
+    {
         require(block.number < endBlock);
         require(block.number + silencePeriod < endBlock);
         startAcceptingFundsBlock = block.number + silencePeriod;
         moveToState(States.Ico);
     }
 
+    //this is the main funding function, it updates the balances of FRM during the ICO.
+    //no particular incentive schemes have been implemented here
+    //it is only accessible during the "ICO" phase.
+    function() public payable
+    requireState(States.Ico) 
+    {
+        require(whitelist[msg.sender] == true);
+        require(this.balance <= weiICOMaximum); //note that msg.value is already included in this.balance
+        require(block.number < endBlock);
+        require(block.number >= startAcceptingFundsBlock);
+        uint256 numberFRMTokenIncrease = msg.value * numberFRMPerETH;
+        balances[initialHolder] -= numberFRMTokenIncrease;
+        balances[msg.sender] += numberFRMTokenIncrease;
+        Credited(msg.sender, balances[msg.sender], msg.value);
+    }
 
-    function endICO() onlyStateControl requireState(States.Ico) {
+    function endICO() 
+    public 
+    onlyStateControl 
+    requireState(States.Ico) 
+    {
         if (this.balance < weiICOMinimum) {
             moveToState(States.Underfunded);
-        }
-        else {
+        } else {
             burnUnsoldCoins();
             moveToState(States.Operational);
         }
     }
 
     function anyoneEndICO()
+    public
     requireState(States.Ico)
     {
         require(block.number > endBlock);
         if (this.balance < weiICOMinimum) {
             moveToState(States.Underfunded);
-        }
-        else {
+        } else {
             burnUnsoldCoins();
             moveToState(States.Operational);
         }
     }
 
-    function burnUnsoldCoins()
-    internal
-    {
-        uint256 soldcoins = this.balance * numberFRMPerETH;
-        totalSupply = soldcoins * 100 / percentForSale;
-        balances[initialHolder] = totalSupply - soldcoins;
-        //slashing the initial supply, so that the ico is selling 30% total
-    }
-
     function addToWhitelist(address _whitelisted)
+    public
     onlyWhitelist
         //    requireState(States.Ico)
     {
@@ -206,9 +196,9 @@ contract OurToken is StandardToken {
         Whitelisted(_whitelisted);
     }
 
-
     //emergency pause for the ICO
     function pause()
+    public
     onlyStateControl
     requireState(States.Ico)
     {
@@ -217,6 +207,7 @@ contract OurToken is StandardToken {
 
     //in case we want to completely abort
     function abort()
+    public
     onlyStateControl
     requireState(States.Paused)
     {
@@ -225,6 +216,7 @@ contract OurToken is StandardToken {
 
     //un-pause
     function resumeICO()
+    public
     onlyStateControl
     requireState(States.Paused)
     {
@@ -233,6 +225,7 @@ contract OurToken is StandardToken {
 
     //in case of a failed/aborted ICO every investor can get back their money
     function requestRefund()
+    public
     requireState(States.Underfunded)
     {
         require(balances[msg.sender] > 0);
@@ -245,6 +238,7 @@ contract OurToken is StandardToken {
 
     //after the ico has run its course, the withdraw account can drain funds bit-by-bit as needed.
     function requestPayout(uint _amount)
+    public
     onlyWithdraw //very important!
     requireState(States.Operational)
     {
@@ -257,43 +251,71 @@ contract OurToken is StandardToken {
     /**
     BEGIN ERC20 functions
     */
+    function balanceOf(address _account)
+    public
+    constant
+    returns (uint256 balance) 
+    {
+        return balances[_account] + rakesOwing(_account);
+    }
+
     function transfer(address _to, uint256 _value)
+    public
     requireState(States.Operational)
     updateAccount(msg.sender) //update senders rake before transfer, so they can access their full balance
     updateAccount(_to) //update receivers rake before transfer as well, to avoid over-attributing rake
     enforceRake(msg.sender, _value)
-    returns (bool success) {
+    returns (bool success) 
+    {
+        require(balances[msg.sender] >= _value);           // Check if the sender has enough
+        require(balances[_to] + _value >= balances[_to]); // Check for overflows
         return super.transfer(_to, _value);
     }
 
     function transferFrom(address _from, address _to, uint256 _value)
+    public
     requireState(States.Operational)
     updateAccount(_from) //update senders rake before transfer, so they can access their full balance
     updateAccount(_to) //update receivers rake before transfer as well, to avoid over-attributing rake
     enforceRake(_from, _value)
-    returns (bool success) {
+    returns (bool success) 
+    {
         return super.transferFrom(_from, _to, _value);
     }
 
-    function balanceOf(address _account)
-    constant
-    returns (uint256 balance) {
-        return balances[_account] + rakesOwing(_account);
-    }
-
     function payRake(uint256 _value)
+    public
     requireState(States.Operational)
     updateAccount(msg.sender)
-    returns (bool success) {
+    returns (bool success) 
+    {
         return payRakeInternal(msg.sender, _value);
     }
 
+    // registerContest declares a contest to FRMToken.
+    // It must be called from an address that has FRMToken.
+    // This address is recorded as the contract admin.
+    function registerContest() public {
+        contests[msg.sender] = true;
+        ContestAnnouncement(msg.sender);
+    }
 
-    function
-    payRakeInternal(address _sender, uint256 _value)
+    function moveToState(States _newState) internal {
+        StateTransition(state, _newState);
+        state = _newState;
+    }
+
+    function burnUnsoldCoins() internal {
+        uint256 soldcoins = this.balance * numberFRMPerETH;
+        totalSupply = soldcoins * 100 / PERCENT_FOR_SALE;
+        balances[initialHolder] = totalSupply - soldcoins;
+        //slashing the initial supply, so that the ico is selling 30% total
+    }
+
+    function payRakeInternal(address _sender, uint256 _value)
     internal
-    returns (bool success) {
-
+    returns (bool success) 
+    {
         if (balances[_sender] <= _value) {
             return false;
         }
@@ -302,12 +324,12 @@ contract OurToken is StandardToken {
             balances[_sender] -= _value;
             unclaimedRakes += _value;
             //   calc amount of points from total:
-            uint256 pointsPaid = _value * pointMultiplier / totalSupply;
+            uint256 pointsPaid = _value * POINT_MULTIPLIER / totalSupply;
             totalRakePoints += pointsPaid;
         }
         return true;
-
     }
+
     /**
     END ERC20 functions
     */
@@ -339,15 +361,14 @@ contract OurToken is StandardToken {
         uint256 basicPoints = balances[_account] * newRakePoints;
         //still positive
         //normalize to dimension HC by moving comma left by 18 places
-        return (basicPoints) / pointMultiplier;
+        return (basicPoints) / POINT_MULTIPLIER;
     }
     /**
     END Rake modifier updateAccount
     */
 
     // contest management functions
-
-    modifier enforceRake(address _contest, uint256 _value){
+    modifier enforceRake(address _contest, uint256 _value) {
         //we calculate 1% of the total value, rounded up. division would round down otherwise.
         //explicit brackets illustrate that the calculation only round down when dividing by 100, to avoid an expression
         // like value * (99/100)
@@ -358,15 +379,5 @@ contract OurToken is StandardToken {
         }
         _;
     }
-
     // all functions require FRMToken operational state
-
-
-    // registerContest declares a contest to FRMToken.
-    // It must be called from an address that has FRMToken.
-    // This address is recorded as the contract admin.
-    function registerContest() {
-        contests[msg.sender] = true;
-        ContestAnnouncement(msg.sender);
-    }
 }
